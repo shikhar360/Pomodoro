@@ -6,3 +6,7 @@ xcuserdata/
 .DS_Store
 .env*
 /shots/
+
+# Generated app and installer artifacts
+/Pomodoro.dmg
+/Resources/

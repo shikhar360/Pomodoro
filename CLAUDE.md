@@ -1,44 +1,42 @@
 # Pomodoro
 
-A native macOS app in SwiftUI. It runs on this Mac only, with a local
-SwiftData database and no server.
+A native macOS menu-bar utility. It runs on this Mac only, with settings in
+`UserDefaults` and no server or database.
 
 ## Layout
 
-- `Sources/Pomodoro/` the app. `App.swift` has the window, menus, and the database location.
-- `Sources/PomodoroKit/` rules and data logic with no SwiftUI. Tests in `Tests/PomodoroKitTests/`.
+- `Sources/Pomodoro/` the menu-bar app, floating `NSPanel`, screen sampler, and test modes.
+- `Sources/PomodoroKit/` timer rules with no SwiftUI. Tests in `Tests/PomodoroKitTests/`.
 - `Package.swift` a Swift package. There is no Xcode project.
 - `build.sh` builds, signs, and installs `~/Applications/Pomodoro.app`.
-- `Icon/AppIcon.icon` the app icon, an Icon Composer file (JSON plus SVG layers). `build.sh` compiles it with `tools/make_icon.sh`; `tools/icon_review.sh` renders every look into one PNG.
-- `docs/` the brief, the screen index, and the user stories, when they exist.
+- `Icon/AppIcon.icon` the app icon. `build.sh` compiles it with `tools/make_icon.sh`.
 
 ## Build and check
 
-- Build and install: `./build.sh`. Add `--open` to restart the app with the new build. The build shows warnings; fix them.
+- Build and install: `./build.sh`. Add `--open` to restart the app with the new build. Fix warnings.
 - Unit tests: `swift test --scratch-path ~/Library/Developer/Pomodoro/test-build`.
-- Self-test (the app's real functions on a /tmp store): `tools/selftest.sh`. Exit 0 when every check passes. Add a check for every story with logic in `SelfTest.swift`.
-- After every UI change, take snapshots with sample data and look at them: `tools/snap.sh`.
-  It writes `/tmp/Pomodoro-shots/<page>-light.png` and `-dark.png` for every sidebar page, and `settings-<tab>-light.png` and `-dark.png` for every Settings tab, then quits. `APP_SNAPSHOT_PAGES=all,settings tools/snap.sh` limits the pages.
-  For a panel, sheet, or popover, add a capture to `Snapshot.swift` like the Settings loop.
-- Snapshots, seed data, and the self-test refuse to run without `APP_STORE` in /tmp.
-- Never test against the real database in `~/Library/Application Support/Pomodoro/`.
-- Then check the grid: `tools/grid-lint.sh` and `swift tools/check-layout.swift /tmp/Pomodoro-shots/*-layout.json`. Both print PASS.
-- A change is done when the build has no errors, the grid checks pass, and you looked at the light and dark snapshots.
+- Self-test: `tools/selftest.sh`. Exit 0 when every check passes. Add a check for every timer rule.
+- Snapshots: `tools/snap.sh`. Writes `/tmp/Pomodoro-shots/floating-light.png`, `floating-dark.png`, `tray-light.png`, and `tray-dark.png`, then quits.
+- The self-test and snapshots require `APP_STORE` to be set so they never change the real saved settings.
+- Grid checks: `tools/grid-lint.sh` and `swift tools/check-layout.swift /tmp/Pomodoro-shots/*-layout.json`.
+- Done when the build has no errors, the grid checks pass, and the light and dark snapshots look right.
 
 ## Design rules
 
-- Use Apple's controls and system styles. Only the accent color is custom: `UI/Theme.swift` (`ThemeStore.defaultID`). People change it, and light or dark mode, in Settings > Appearance.
-- Views use `.tint`, `Palette.accent`, `Palette.accentText` (accent-colored text), and `Palette.onAccent` (text on an accent fill). Never hard-code colors, radii, or durations in views.
-- Compare accents: add `APP_ACCENT=<id>` to the snapshot command.
-- Spacing comes from `Space` in `UI/Grid.swift`, on a 4 pt grid. Mark custom pages and cards with `.gridArea` and `.gridProbe`.
-- Windows open calm: `.noInitialFocus()` on every window and sheet (no focus ring or selected text on open), `.fitsContent()` on sheets and Settings tabs (no scroll bar with nothing to scroll). System scroll bars. Both in `UI/WindowBehavior.swift`.
-- Settings: one tab per topic in `SettingsView.swift`, one grouped Form per tab. Add a case to `SettingsTab` for a new tab.
-- Window chrome (title bar, toolbar, sidebar, menus, sheets) stays system. Buttons use system styles, like `.borderedProminent`.
-- Colors: `.primary`, `.secondary`, `.tint`, and system colors. Never fixed grays or white for text.
-- Every action has a menu bar item and a keyboard shortcut.
-- `Label` for icon and text pairs. SF Symbols for icons.
-- `ContentUnavailableView` for empty states.
-- Liquid Glass belongs to floating controls only, never to content.
+- The menu bar tray is the only settings surface. Keep it system-styled, compact, and keyboard accessible.
+- Global shortcuts default to fn-S (Start), fn-P (Pause), fn-R (Reset), and Control-K (Skip). They are Carbon global hotkeys, so they work while another app is frontmost and need no Accessibility permission. Expand "Shortcuts" in the tray to record replacements; they are stored in `UserDefaults`.
+- The floating timer is deliberately transparent and borderless. Its digits always adapt to the sampled screen behind them: white on a dark background, black on a light one. No off switch or user-facing threshold needed.
+- Each changed digit rolls upward while the next one enters from below, in the spirit of iPhone StandBy. Respect Reduce Motion.
+- Screen sampling uses ScreenCaptureKit and requires Screen Recording permission. Ask at most once per app identity; existing installs are marked as already prompted. Never prompt on self-test or snapshot runs.
+- Ad-hoc builds must use a stable designated requirement (`identifier "com.shikhar.pomodoro"`), not the default cdhash, or macOS forgets the permission grant at every rebuild.
+- Dragging moves the timer. The tray's Size slider scales it. Click-through is an opt-in lock, not the default.
+- Use Apple's controls and system styles, and `Space` in `UI/Grid.swift` for tray spacing.
+- A menu-bar-only app should not force activation or show a Dock icon (`LSUIElement`).
+
+## Permissions
+
+- Screen Recording: `CGPreflightScreenCaptureAccess()` checks it, and `CGRequestScreenCaptureAccess()` asks once. The tray offers both the request button and the System Settings link.
+- The grant is tied to the code signature and path. Use the same signing identity and install path across rebuilds.
 
 ## Skills
 

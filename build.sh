@@ -3,7 +3,7 @@
 # Build products live in ~/Library/Developer/Pomodoro, outside the repo
 # (and outside Dropbox or iCloud, which would try to sync them).
 #
-# Usage: ./build.sh            release build, install
+# Usage: ./build.sh            release build, install/ski9
 #        ./build.sh --debug    debug build, install
 #        ./build.sh --open     install, then quit the running copy and open the new one
 set -euo pipefail
@@ -38,17 +38,29 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/$name"
 sed -e "s/__BUILD__/$(date +%Y%m%d%H%M)/" "$here/Info.plist.in" > "$app/Contents/Info.plist"
-# The icon: Icon/AppIcon.icon -> Resources/Assets.car + AppIcon.icns, rebuilt when it changed.
+# The icon: SVG layers -> Resources/AppIcon.icns, rebuilt when it changed.
 if [[ -d "$here/Icon/AppIcon.icon" ]]; then
-  car="$here/Resources/Assets.car"
-  if [[ ! -f "$car" || -n "$(find "$here/Icon/AppIcon.icon" -newer "$car" | head -1)" ]]; then
+  icns="$here/Resources/AppIcon.icns"
+  if [[ ! -f "$icns" || -n "$(find "$here/Icon/AppIcon.icon" -newer "$icns" | head -1)" ]]; then
     "$here/tools/make_icon.sh"
   fi
-  cp -X "$car" "$here/Resources/AppIcon.icns" "$app/Contents/Resources/"
+  cp -X "$icns" "$app/Contents/Resources/"
 fi
 xattr -cr "$app"
-codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
-echo "installed $app (signed: ${identity})"
+# An ad-hoc default requirement is a cdhash of this exact build, so macOS
+# treats every rebuild as a new app and forgets the Screen Recording grant.
+# Pin an identifier requirement for ad-hoc builds; a real certificate already
+# has a stable designated requirement, so leave it alone.
+if [[ "$identity" == "-" ]]; then
+  codesign --force --sign - \
+    --identifier com.shikhar.pomodoro \
+    --requirements '=designated => identifier "com.shikhar.pomodoro"' \
+    "$app" 2>&1 | grep -v "replacing existing signature" || true
+  echo "installed $app (ad hoc, stable requirement: com.shikhar.pomodoro)"
+else
+  codesign --force --sign "$identity" "$app" 2>&1 | grep -v "replacing existing signature" || true
+  echo "installed $app (signed: ${identity})"
+fi
 
 if [[ " $* " == *" --open "* ]]; then
   osascript -e "quit app \"$name\"" 2>/dev/null || true

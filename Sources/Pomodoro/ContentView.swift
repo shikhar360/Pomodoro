@@ -1,91 +1,226 @@
-import SwiftData
+import AppKit
+import PomodoroKit
 import SwiftUI
 
-struct ContentView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.openSettings) private var openSettings
+/// The menu-bar tray: all controls live here, so the floating timer can stay
+/// visually quiet and never needs a title bar or toolbar.
+struct MenuBarView: View {
+    @ObservedObject var model: PomodoroModel
+    @State private var showShortcuts = false
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-        } content: {
-            ItemList(page: model.sidebar ?? .all)
-                .navigationSplitViewColumnWidth(min: 260, ideal: 320)
-        } detail: {
-            ItemDetail()
+        VStack(alignment: .leading, spacing: Space.lg) {
+            header
+            timerControls
+            Divider()
+            phaseControls
+            durationControls
+            Divider()
+            shortcutControls
+            Divider()
+            displayControls
+            Divider()
+            footer
         }
-        .task {
-            SeedData.insertIfRequested(into: model)
-            SelfTest.runIfRequested(model: model)
-            Snapshot.runIfRequested(model: model, openSettings: openSettings)
+        .padding(Space.lg)
+        .frame(width: 340)
+        .background(.regularMaterial)
+    }
+
+    private var header: some View {
+        HStack(spacing: Space.sm) {
+            Image(systemName: model.phaseSymbol)
+                .foregroundStyle(.tint)
+            Text(model.phaseTitle)
+                .font(.headline)
+            Spacer()
+            Text(model.formattedRemaining)
+                .font(.system(.title2, design: .rounded).monospacedDigit())
+                .fontWeight(.semibold)
         }
     }
 
-    private var sidebar: some View {
-        @Bindable var model = model
-        return List(SidebarItem.allCases, selection: $model.sidebar) { page in
-            Label(page.title, systemImage: page.symbol)
-                .tag(page)
+    private var timerControls: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            ProgressView(value: model.progress)
+                .controlSize(.small)
+            HStack(spacing: Space.sm) {
+                Button(model.isRunning ? "Pause" : "Start") {
+                    model.toggleRunning()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+
+                Button("Reset") { model.reset() }
+                Button("Skip") { model.skip() }
+                Spacer()
+                Text("\(model.completedFocusSessions) focus sessions")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .navigationSplitViewColumnWidth(min: 180, ideal: 212)
     }
+
+    private var phaseControls: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text("Timer")
+                .font(.subheadline.weight(.semibold))
+            Picker("Phase", selection: Binding(
+                get: { model.phase },
+                set: { model.choose($0) }
+            )) {
+                ForEach(PomodoroTimer.Phase.allCases, id: \.self) { phase in
+                    Text(phase.title).tag(phase)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Stepper(value: Binding(
+                get: { model.longBreakEvery },
+                set: { model.longBreakEvery = $0 }
+            ), in: 2...12) {
+                Text("Long break after \(model.longBreakEvery) focus sessions")
+                    .font(.caption)
+            }
+        }
+    }
+
+    private var durationControls: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text("Durations")
+                .font(.subheadline.weight(.semibold))
+            DurationRow(title: "Focus", minutes: Binding(
+                get: { model.workMinutes },
+                set: { model.workMinutes = $0 }
+            ), range: 1...180)
+            DurationRow(title: "Short break", minutes: Binding(
+                get: { model.shortBreakMinutes },
+                set: { model.shortBreakMinutes = $0 }
+            ), range: 1...60)
+            DurationRow(title: "Long break", minutes: Binding(
+                get: { model.longBreakMinutes },
+                set: { model.longBreakMinutes = $0 }
+            ), range: 1...120)
+        }
+    }
+
+    private var shortcutControls: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showShortcuts.toggle() }
+            } label: {
+                HStack {
+                    Text("Shortcuts")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showShortcuts ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Shortcuts")
+            .accessibilityValue(showShortcuts ? "Expanded" : "Collapsed")
+
+            if showShortcuts {
+                ForEach(ShortcutAction.allCases) { action in
+                    HStack {
+                        Text(action.title)
+                        Spacer()
+                        ShortcutRecorder(action: action, model: model)
+                    }
+                    .font(.callout)
+                }
+                HStack {
+                    Text("Click a shortcut, then press a new combination. Esc cancels.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Defaults") { model.restoreDefaultShortcuts() }
+                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.tint)
+                }
+            }
+        }
+    }
+
+    private var displayControls: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text("Floating timer")
+                .font(.subheadline.weight(.semibold))
+            VStack(alignment: .leading, spacing: Space.xs) {
+                HStack {
+                    Text("Size")
+                    Spacer()
+                    Text("\(Int((model.timerScale * 100).rounded()))%")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Slider(value: Binding(
+                    get: { model.timerScale },
+                    set: { model.timerScale = $0 }
+                ), in: 0.6...2.6, step: 0.1)
+            }
+            HStack {
+                Text("Adaptive color")
+                Spacer()
+                Text(model.hasScreenAccess ? "On" : "Permission needed")
+                    .foregroundStyle(.secondary)
+            }
+            if !model.hasScreenAccess {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Allow Screen Recording once so the timer can match the background behind it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: Space.sm) {
+                        Button("Open Screen Recording Settings") { model.openScreenRecordingSettings() }
+                    }
+                    .controlSize(.small)
+                }
+            }
+            Toggle("Click-through timer", isOn: Binding(
+                get: { model.clickThrough },
+                set: { model.clickThrough = $0 }
+            ))
+            Text("Drag the timer to move it. Click-through keeps it from blocking clicks.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Button("Reset cycle") { model.resetCycle() }
+                .controlSize(.small)
+            Spacer()
+            Button("Quit Pomodoro") { NSApp.terminate(nil) }
+                .controlSize(.small)
+        }
+    }
+
 }
 
-struct ItemList: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.modelContext) private var context
-    @Query(sort: \Item.createdAt, order: .reverse) private var items: [Item]
-    let page: SidebarItem
-
-    private var visible: [Item] {
-        page == .starred ? items.filter(\.isStarred) : items
-    }
+private struct DurationRow: View {
+    let title: String
+    @Binding var minutes: Int
+    let range: ClosedRange<Int>
 
     var body: some View {
-        @Bindable var model = model
-        List(visible, selection: $model.selection) { item in
-            Label(item.title, systemImage: item.isStarred ? "star.fill" : "circle")
-                .tag(item.id)
-                .contextMenu {
-                    Button("Delete", role: .destructive) { context.delete(item) }
-                }
-        }
-        .overlay {
-            if visible.isEmpty {
-                ContentUnavailableView(
-                    "No Items",
-                    systemImage: page.symbol,
-                    description: Text("Press Command-N to add one.")
-                )
+        HStack {
+            Text(title)
+            Spacer()
+            Stepper(value: $minutes, in: range) {
+                Text("\(minutes) min")
+                    .monospacedDigit()
+                    .frame(minWidth: 64, alignment: .trailing)
             }
         }
-        .navigationTitle(page.title)
-        .toolbar {
-            ToolbarItem {
-                Button("New Item", systemImage: "plus") { model.addItem() }
-                    .help("Add an item (Command-N)")
-            }
-        }
-    }
-}
-
-struct ItemDetail: View {
-    @Environment(AppModel.self) private var model
-    @Query private var items: [Item]
-
-    var body: some View {
-        if let item = items.first(where: { $0.id == model.selection }) {
-            @Bindable var item = item
-            Form {
-                TextField("Title", text: $item.title)
-                Toggle("Starred", isOn: $item.isStarred)
-                TextField("Notes", text: $item.notes, axis: .vertical)
-                    .lineLimit(4...)
-            }
-            .formStyle(.grouped)
-            } else {
-            ContentUnavailableView("No Selection", systemImage: "sidebar.right")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+        .font(.callout)
     }
 }

@@ -1,86 +1,56 @@
 import AppKit
-import SwiftData
 import SwiftUI
 
-// Pomodoro
-//   Pomodoro                      the app
-//   APP_STORE=<file> Pomodoro     use another database (tests, experiments)
-//   APP_SNAPSHOT=<dir> Pomodoro   save a PNG of every sidebar page and Settings tab in light and dark mode, then quit
-//   APP_SEED=1 Pomodoro           fill an empty /tmp store with sample items (tools/snap.sh)
-//   Pomodoro --selftest           run the self-test on a /tmp store and quit with 0 or 1 (tools/selftest.sh)
-//   APP_ACCENT=<id> Pomodoro      run with another accent from Theme.all (UI/Theme.swift)
-//   APP_GRID=1 Pomodoro           draw the 8 pt grid and the layout probes over the window
+// Pomodoro is a menu-bar utility. The timer is a separate transparent panel.
+// APP_STORE=<test-path> isolates settings and snapshots from the user's data.
+// APP_SNAPSHOT=<dir> captures the floating timer in light and dark mode.
+// --selftest exercises the timer controls and quits with 0 or 1.
 
 @main
+@MainActor
 struct PomodoroApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var model = AppModel(container: Store.makeContainer())
+    @StateObject private var model = PomodoroModel.shared
 
     var body: some Scene {
-        Window("Pomodoro", id: "main") {
-            ContentView()
-                .environment(model)
-                .themed()
-                .overlay { if GridOverlay.enabled { GridOverlay() } }
-                .frame(minWidth: 760, minHeight: 480)
+        MenuBarExtra {
+            MenuBarView(model: model)
+        } label: {
+            Image(systemName: "timer")
+                .accessibilityLabel("Pomodoro")
         }
-        .modelContainer(model.container)
-        .defaultSize(width: 1100, height: 720)
-        .windowToolbarStyle(.unified)
-        .commands {
-            SidebarCommands()
-            ToolbarCommands()
-            CommandGroup(replacing: .newItem) {
-                Button("New Item") { model.addItem() }
-                    .keyboardShortcut("n")
-            }
-        }
-
-        Settings {
-            SettingsView()
-                .environment(model)
-                .themed()
-        }
-        .windowResizability(.contentSize)
+        .menuBarExtraStyle(.window)
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var floatingTimer: FloatingTimerWindow?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Started from a terminal, the process is not a foreground app yet.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
+        NSApp.setActivationPolicy(.accessory)
+        let model = PomodoroModel.shared
+        let floatingTimer = FloatingTimerWindow(model: model)
+        self.floatingTimer = floatingTimer
+        floatingTimer.begin()
+
+        GlobalHotkeys.shared.start(model: model)
+        if ProcessInfo.processInfo.environment["APP_SCREEN_LOG"] != nil {
+            print("SCREEN access=\(model.hasScreenAccess)")
+            fflush(stdout)
+        }
+        if !SelfTest.requested && !Snapshot.requested {
+            model.requestScreenAccessIfNeeded()
+        }
+
+        SelfTest.runIfRequested(model: model)
+        Snapshot.runIfRequested(model: model, window: floatingTimer)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// The self-test's result becomes the exit code, after a normal quit.
     func applicationWillTerminate(_ notification: Notification) {
+        floatingTimer?.close()
         if SelfTest.requested { exit(SelfTest.exitCode) }
-    }
-}
-
-/// Where the data lives: ~/Library/Application Support/Pomodoro/Pomodoro.store
-enum Store {
-    /// True when APP_STORE points somewhere else (tests, snapshots, seed data).
-    static var isOverridden: Bool {
-        !(ProcessInfo.processInfo.environment["APP_STORE"] ?? "").isEmpty
-    }
-
-    static var url: URL {
-        if let path = ProcessInfo.processInfo.environment["APP_STORE"], !path.isEmpty {
-            return URL(fileURLWithPath: path)
-        }
-        let dir = URL.applicationSupportDirectory.appending(path: "Pomodoro", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appending(path: "Pomodoro.store")
-    }
-
-    static func makeContainer() -> ModelContainer {
-        do {
-            return try ModelContainer(for: Item.self, configurations: ModelConfiguration(url: url))
-        } catch {
-            fatalError("Could not open the database at \(url.path): \(error)")
-        }
     }
 }
