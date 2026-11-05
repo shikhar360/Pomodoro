@@ -35,10 +35,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         floatingTimer.begin()
 
         GlobalHotkeys.shared.start(model: model)
-        if ProcessInfo.processInfo.environment["APP_SCREEN_LOG"] != nil {
-            print("SCREEN access=\(model.hasScreenAccess)")
-            fflush(stdout)
-        }
         if !SelfTest.requested && !Snapshot.requested {
             model.requestScreenAccessIfNeeded()
         }

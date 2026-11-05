@@ -24,13 +24,13 @@ A tiny macOS menu-bar Pomodoro timer with a transparent floating clock.
 This builds the app, compiles its icon without Xcode, signs it, and installs it to:
 
 ```text
-~/Applications/Pomodoro.app
+/Applications/Pomodoro.app
 ```
 
 Open it with:
 
 ```sh
-open ~/Applications/Pomodoro.app
+open /Applications/Pomodoro.app
 ```
 
 ## Install from the DMG
@@ -95,7 +95,7 @@ swift package clean --scratch-path ~/Library/Developer/Pomodoro/build
 
 ## Recover a lost copy
 
-The installed app lives at `~/Applications/Pomodoro.app`. Keep a copy of the project folder or the generated `Pomodoro.dmg` somewhere safe, such as in Git or a backup drive. To reinstall from the project:
+The installed app lives at `/Applications/Pomodoro.app`. Keep a copy of the project folder or the generated `Pomodoro.dmg` somewhere safe, such as in Git or a backup drive. To reinstall from the project:
 
 ```sh
 ./build.sh --open

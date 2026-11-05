@@ -86,10 +86,6 @@ final class GlobalHotkeys {
                                              &ref)
             if status == noErr, let ref {
                 registrations[action] = ref
-                if ProcessInfo.processInfo.environment["APP_HOTKEY_LOG"] != nil {
-                    print("HOTKEY registered \(shortcut.display) for \(action.rawValue)")
-                    fflush(stdout)
-                }
             } else if status == eventHotKeyExistsErr {
                 registrationError = "\(shortcut.display) is already used by another app."
                 print("HOTKEY conflict \(shortcut.display)")
@@ -103,10 +99,6 @@ final class GlobalHotkeys {
     private func run(_ id: UInt32) {
         guard let action = ShortcutAction.allCases.first(where: { $0.registrationID == id }),
               let model else { return }
-        if ProcessInfo.processInfo.environment["APP_HOTKEY_LOG"] != nil {
-            print("HOTKEY \(action.rawValue)")
-            fflush(stdout)
-        }
         switch action {
         case .start: model.start()
         case .pause: model.pause()

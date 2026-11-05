@@ -5,7 +5,8 @@ set -euo pipefail
 here=${0:A:h}
 repo=${here:h}
 out=${1:-"$repo/Pomodoro.dmg"}
-app="$HOME/Applications/Pomodoro.app"
+app="/Applications/Pomodoro.app"
+[[ -d "$app" ]] || app="$HOME/Applications/Pomodoro.app"
 volume="Pomodoro"
 
 [[ -d "$app" ]] || { echo "Missing $app; run ./build.sh first."; exit 1; }

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 @testable import PomodoroKit
 
@@ -39,4 +40,24 @@ func adaptiveTextColor() {
     #expect(PomodoroTimer.usesLightText(forBackgroundLightness: 0.5))
     #expect(!PomodoroTimer.usesLightText(forBackgroundLightness: 0.5001))
     #expect(!PomodoroTimer.usesLightText(forBackgroundLightness: 1))
+}
+
+@Test("The direct capture rectangle uses top-left screen coordinates")
+func captureRect() {
+    let timer = CGRect(x: 1134, y: 51, width: 286, height: 97)
+    let rect = PomodoroTimer.captureRect(windowFrame: timer, primaryScreenHeight: 900)
+    #expect(rect == CGRect(x: 1134, y: 752, width: 286, height: 97))
+}
+
+@Test("The sampler crop follows a timer at the bottom-right of the screen")
+func samplerCrop() {
+    let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    let timer = CGRect(x: 1140, y: 772, width: 260, height: 88)
+    let crop = PomodoroTimer.sampleRect(windowFrame: timer,
+                                        screenFrame: screen,
+                                        imageSize: CGSize(width: 320, height: 200))
+    #expect(crop.minX > 240)
+    #expect(crop.minY > 160)
+    #expect(crop.width > 50)
+    #expect(crop.height > 15)
 }

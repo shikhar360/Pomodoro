@@ -8,7 +8,7 @@ A native macOS menu-bar utility. It runs on this Mac only, with settings in
 - `Sources/Pomodoro/` the menu-bar app, floating `NSPanel`, screen sampler, and test modes.
 - `Sources/PomodoroKit/` timer rules with no SwiftUI. Tests in `Tests/PomodoroKitTests/`.
 - `Package.swift` a Swift package. There is no Xcode project.
-- `build.sh` builds, signs, and installs `~/Applications/Pomodoro.app`.
+- `build.sh` builds, signs, and installs `/Applications/Pomodoro.app`.
 - `Icon/AppIcon.icon` the app icon. `build.sh` compiles it with `tools/make_icon.sh`.
 
 ## Build and check

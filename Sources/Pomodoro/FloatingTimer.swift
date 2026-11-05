@@ -109,10 +109,6 @@ final class FloatingTimerWindow: NSPanel {
                 self.model.refreshScreenAccess()
                 return
             }
-            if ProcessInfo.processInfo.environment["APP_COLOR_LOG"] != nil {
-                print("COLOR lightness=\(lightness) lightText=\(PomodoroTimer.usesLightText(forBackgroundLightness: lightness)) frame=\(timerFrame)")
-                fflush(stdout)
-            }
             // Repeated every 0.6 s: a dark background gets white digits and a
             // light one gets black digits.
             self.model.setBackgroundIsLight(!PomodoroTimer.usesLightText(forBackgroundLightness: lightness))

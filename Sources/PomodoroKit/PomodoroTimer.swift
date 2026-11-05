@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Timer rules with no UI. The app owns clocks and views; this owns the
@@ -56,5 +57,35 @@ public enum PomodoroTimer {
     /// The midpoint keeps mid-gray from sticking to the wrong color.
     public static func usesLightText(forBackgroundLightness lightness: Double) -> Bool {
         lightness <= 0.5
+    }
+
+    /// Converts an AppKit window frame (bottom-left origin) to the top-left
+    /// global coordinates used by `SCScreenshotManager.captureImage(in:)`.
+    public static func captureRect(windowFrame frame: CGRect,
+                                   primaryScreenHeight: CGFloat) -> CGRect {
+        CGRect(x: frame.minX,
+               y: primaryScreenHeight - frame.maxY,
+               width: frame.width,
+               height: frame.height)
+    }
+
+    /// Crop of the timer rectangle in ScreenCaptureKit's screen image. Both
+    /// AppKit windows and this image use bottom-left coordinates; getting that
+    /// backwards samples the opposite corner of the screen.
+    public static func sampleRect(windowFrame frame: CGRect,
+                                  screenFrame screen: CGRect,
+                                  imageSize: CGSize) -> CGRect {
+        guard screen.width > 0, screen.height > 0, imageSize.width > 0, imageSize.height > 0 else {
+            return .zero
+        }
+        let relativeX = (frame.minX - screen.minX) / screen.width
+        // ScreenCaptureKit's CGImage is bottom-left based here, same as
+        // NSWindow.frame. Use the window's bottom edge, not its top edge.
+        let relativeTop = (frame.minY - screen.minY) / screen.height
+        return CGRect(x: relativeX * imageSize.width,
+                      y: relativeTop * imageSize.height,
+                      width: frame.width / screen.width * imageSize.width,
+                      height: frame.height / screen.height * imageSize.height)
+            .integral
     }
 }

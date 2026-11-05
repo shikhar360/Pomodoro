@@ -1,8 +1,9 @@
 import AppKit
 import CoreGraphics
+import PomodoroKit
 @preconcurrency import ScreenCaptureKit
 
-/// Samples the screen behind the floating timer and returns its average
+/// Samples the screen underneath the floating timer and returns its average
 /// lightness. No screenshot is stored or leaves the Mac.
 @MainActor
 enum BackgroundSampler {
@@ -10,14 +11,38 @@ enum BackgroundSampler {
     ///   allowed or the display no longer exists.
     static func lightness(behind frame: CGRect, on screen: NSScreen) async -> Double? {
         guard CGPreflightScreenCaptureAccess() else { return nil }
+
+        // macOS 15.2+ captures the exact rectangle. A display-wide capture
+        // followed by crop math put the sample in the wrong corner when the
+        // timer sat at the bottom-right of the screen.
+        if #available(macOS 15.2, *) {
+            let rect = captureRect(for: frame)
+            guard let image = try? await SCScreenshotManager.captureImage(in: rect) else {
+                return nil
+            }
+            return averageLightness(of: image)
+        }
+
+        guard let image = await displayImage(behind: frame, on: screen) else { return nil }
+        guard let sample = image.cropping(to: crop(for: frame, on: screen, image: image)) else { return nil }
+        return averageLightness(of: sample)
+    }
+
+    /// NSWindow and capture rectangles use opposite vertical origins.
+    private static func captureRect(for frame: CGRect) -> CGRect {
+        let primaryScreenHeight = NSScreen.screens.first?.frame.height ?? frame.maxY
+        return PomodoroTimer.captureRect(windowFrame: frame,
+                                         primaryScreenHeight: primaryScreenHeight)
+    }
+
+    /// Fallback for macOS 15.0 and 15.1: a downscaled full-display image,
+    /// excluded from this app's own windows where possible.
+    private static func displayImage(behind frame: CGRect, on screen: NSScreen) async -> CGImage? {
         guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
               let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
               let display = content.displays.first(where: { $0.displayID == displayID.uint32Value }) else {
             return nil
         }
-
-        // Excluding this app matters: sampling our own white or black timer
-        // would make the color flip back and forth.
         let ownApp = content.applications.first {
             $0.processID == ProcessInfo.processInfo.processIdentifier
         }
@@ -31,27 +56,18 @@ enum BackgroundSampler {
         configuration.height = max(1, Int(Double(width) * Double(display.height) / Double(display.width)))
         configuration.showsCursor = false
         configuration.scalesToFit = true
+        return try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+    }
 
-        guard let image = try? await SCScreenshotManager.captureImage(contentFilter: filter,
-                                                                       configuration: configuration),
-              image.width > 0, image.height > 0 else {
-            return nil
-        }
-
-        // SCDisplay frames and CGImage pixels use top-left origin, while
-        // NSScreen and NSWindow frames use bottom-left origin.
-        let relativeX = (frame.minX - screen.frame.minX) / screen.frame.width
-        let relativeTop = (screen.frame.maxY - frame.maxY) / screen.frame.height
-        let relativeWidth = frame.width / screen.frame.width
-        let relativeHeight = frame.height / screen.frame.height
-        let crop = CGRect(x: relativeX * CGFloat(image.width),
-                          y: relativeTop * CGFloat(image.height),
-                          width: max(1, relativeWidth * CGFloat(image.width)),
-                          height: max(1, relativeHeight * CGFloat(image.height)))
-            .integral
+    private static func crop(for frame: CGRect, on screen: NSScreen, image: CGImage) -> CGRect {
+        PomodoroTimer.sampleRect(windowFrame: frame,
+                                 screenFrame: screen.frame,
+                                 imageSize: CGSize(width: image.width, height: image.height))
             .intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        guard crop.width >= 1, crop.height >= 1, let sample = image.cropping(to: crop) else { return nil }
+    }
 
+    private static func averageLightness(of image: CGImage) -> Double? {
+        guard image.width > 0, image.height > 0 else { return nil }
         var pixel = [UInt8](repeating: 0, count: 4)
         guard let context = CGContext(data: &pixel,
                                       width: 1, height: 1,
@@ -61,7 +77,7 @@ enum BackgroundSampler {
             return nil
         }
         context.interpolationQuality = .medium
-        context.draw(sample, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
         return (0.2126 * Double(pixel[0]) + 0.7152 * Double(pixel[1]) + 0.0722 * Double(pixel[2])) / 255
     }
 }
